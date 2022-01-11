@@ -1,23 +1,15 @@
-import { Component, Input, ViewChild, HostListener, AfterViewInit, ViewEncapsulation } from '@angular/core';
-import {DataService, Technique, Matrix, Domain} from '../data.service';
-import {ConfigService} from '../config.service';
+import { Component, Input, ViewChild, AfterViewInit, ViewEncapsulation, OnDestroy, ElementRef, Output, EventEmitter } from '@angular/core';
+import { DataService } from '../data.service';
+import { ConfigService } from '../config.service';
 import { TabsComponent } from '../tabs/tabs.component';
-import { ViewModel, TechniqueVM, Filter, Gradient, Gcolor, ViewModelsService } from "../viewmodels.service";
-import {FormControl} from '@angular/forms';
-import {DomSanitizer, SafeStyle} from '@angular/platform-browser';
-import {MatSelectModule} from '@angular/material/select';
-import {MatCheckboxModule} from '@angular/material/checkbox';
-import {MatMenuTrigger} from '@angular/material/menu';
+import { ViewModel, ViewModelsService, Link, Metadata } from "../viewmodels.service";
+import { DomSanitizer } from '@angular/platform-browser';
+import { Subscription } from 'rxjs';
 import * as Excel from 'exceljs/dist/es5/exceljs.browser';
 import * as is from 'is_js';
 
 declare var tinygradient: any; //use tinygradient
 declare var tinycolor: any; //use tinycolor2
-
-import * as FileSaver from 'file-saver';
-import { ColorPickerModule } from 'ngx-color-picker';
-import { TechniquesSearchComponent } from '../techniques-search/techniques-search.component';
-import { TmplAstVariable } from '@angular/compiler';
 
 @Component({
     selector: 'DataTable',
@@ -25,7 +17,8 @@ import { TmplAstVariable } from '@angular/compiler';
     styleUrls: ['./data-table.component.scss'],
     encapsulation: ViewEncapsulation.None,
 })
-export class DataTableComponent implements AfterViewInit {
+export class DataTableComponent implements AfterViewInit, OnDestroy {
+    @ViewChild('scrollRef') private scrollRef: ElementRef;
 
     //items for custom context menu
     customContextMenuItems = [];
@@ -34,9 +27,9 @@ export class DataTableComponent implements AfterViewInit {
 
     // The ViewModel being used by this data-table
     @Input() viewModel: ViewModel;
-
-    currentDropdown: string = ""; //current dropdown menu
-
+    @Input() currentDropdown: string = ""; //current dropdown menu
+    @Output() dropdownChange = new EventEmitter<any>();
+    @Output() onScroll = new EventEmitter<any>();
 
     //////////////////////////////////////////////////////////
     // Stringifies the current view model into a json string//
@@ -50,7 +43,7 @@ export class DataTableComponent implements AfterViewInit {
         let filename = this.viewModel.name.replace(/ /g, "_") + ".json";
         // FileSaver.saveAs(blob, this.viewModel.name.replace(/ /g, "_") + ".json");
         this.saveBlob(blob, filename);
-        
+
     }
 
     saveBlob(blob, filename){
@@ -73,10 +66,10 @@ export class DataTableComponent implements AfterViewInit {
 
     saveLayerLocallyExcel() {
         var workbook = new Excel.Workbook();
-        let domain = this.dataService.getDomain(this.viewModel.domainID);
+        let domain = this.dataService.getDomain(this.viewModel.domainVersionID);
         for (let matrix of domain.matrices) {
-            var worksheet = workbook.addWorksheet(matrix.name + " (v" + domain.getVersion() + ")");  
-                      
+            var worksheet = workbook.addWorksheet(matrix.name + " (v" + domain.getVersion() + ")");
+
             // create tactic columns
             let columns = this.viewModel.filterTactics(matrix.tactics, matrix).map(tactic => { return {header: this.getDisplayName(tactic), key: tactic.name} });
             worksheet.columns = columns;
@@ -234,17 +227,63 @@ export class DataTableComponent implements AfterViewInit {
         }
     }
 
-    constructor(public dataService: DataService, 
-                private tabs: TabsComponent, 
-                private sanitizer: DomSanitizer, 
-                private viewModelsService: ViewModelsService, 
-                public configService: ConfigService) { }
+    private selectionChangeSubscription: Subscription;
+    constructor(public dataService: DataService,
+                private tabs: TabsComponent,
+                private sanitizer: DomSanitizer,
+                private viewModelsService: ViewModelsService,
+                public configService: ConfigService) {
+
+        this.selectionChangeSubscription = this.viewModelsService.onSelectionChange.subscribe(() => {
+            this.onTechniqueSelect();
+        })
+    }
 
     /**
      * Angular lifecycle hook
      */
     ngAfterViewInit(): void {
         // setTimeout(() => this.exportRender(), 500);
+        this.headerHeight = document.querySelector<HTMLElement>('.header-wrapper')?.offsetHeight;
+        this.scrollRef.nativeElement.style.height = `calc(100vh - ${this.headerHeight + this.controlsHeight + this.footerHeight}px)`;
+        this.scrollRef.nativeElement.addEventListener('scroll', this.handleScroll);
+    }
+
+    ngOnDestroy() {
+        this.selectionChangeSubscription.unsubscribe();
+        document.body.removeEventListener('scroll', this.handleScroll);
+    }
+
+    handleDescriptionDropdown() {
+        this.currentDropdown !== 'description' ? this.currentDropdown = 'description' : this.currentDropdown = '';
+        this.dropdownChange.emit(this.currentDropdown);
+    }
+
+    previousScrollTop = 0;
+    headerHeight = 0;
+    footerHeight = 32;
+    controlsHeight = 34;
+    isScrollUp = true;
+    handleScroll = (e) => {
+        const diff = this.scrollRef.nativeElement.scrollTop - this.previousScrollTop;
+        if (!this.isScrollUp && diff < 0) {
+            this.isScrollUp =  diff < 0;
+            this.calculateScrollHeight();
+            this.previousScrollTop = this.scrollRef.nativeElement.scrollTop;
+        } else if (this.isScrollUp && diff > 0) {
+            this.isScrollUp =  diff < 0;
+            this.calculateScrollHeight();
+            this.previousScrollTop = this.scrollRef.nativeElement.scrollTop;
+        } else if (!this.isScrollUp && this.scrollRef.nativeElement.scrollTop > 0 && diff === 0) {
+            this.calculateScrollHeight();
+        }
+    }
+
+    calculateScrollHeight = () => {
+        const tabOffset = this.isScrollUp ? 0 : this.headerHeight;
+        this.onScroll.emit(-1 * tabOffset);
+        const scrollWindowHeight = this.isScrollUp ? this.headerHeight + this.controlsHeight + this.footerHeight : this.controlsHeight;
+        this.scrollRef.nativeElement.style.height = `calc(100vh - ${scrollWindowHeight}px)`;
     }
 
     // open custom url in a new tab
@@ -267,15 +306,17 @@ export class DataTableComponent implements AfterViewInit {
     // edit field bindings
     commentEditField: string = "";
     scoreEditField: string = "";
+
     /**
      * triggered on left click of technique
-     * @param  technique      technique which was left clicked
-     * @param  addToSelection add to the technique selection (shift key) or replace selection?
      */
-    onTechniqueSelect(technique, addToSelection, eventX, eventY): void {
-        
+    onTechniqueSelect(): void {
         if (!this.viewModel.isCurrentlyEditing()) {
-            if (["comment", "score", "colorpicker"].includes(this.currentDropdown)) this.currentDropdown = ""; //remove technique control dropdowns, because everything was deselected
+            if (["comment", "score", "colorpicker", "link", "metadata"].includes(this.currentDropdown)) this.currentDropdown = ""; //remove technique control dropdowns, because everything was deselected
+            return;
+        }
+        if (this.currentDropdown == "link" || this.currentDropdown == "metadata") {
+            this.currentDropdown = "";
             return;
         }
         //else populate editing controls
@@ -287,7 +328,7 @@ export class DataTableComponent implements AfterViewInit {
      */
     expandSubtechniques(showAnnotatedOnly?: boolean): void {
         if (this.viewModel.layout.layout == "mini") return; //control disabled in mini layout
-        for (let technique of this.dataService.getDomain(this.viewModel.domainID).techniques) {
+        for (let technique of this.dataService.getDomain(this.viewModel.domainVersionID).techniques) {
             if (technique.subtechniques.length > 0) {
                 for (let id of technique.get_all_technique_tactic_ids()) {
                     let tvm = this.viewModel.getTechniqueVM_id(id);
@@ -363,5 +404,15 @@ export class DataTableComponent implements AfterViewInit {
      */
     exportRender(): void {
         this.tabs.openSVGDialog(this.viewModel);
+    }
+
+    /**
+     * open search & multiselect sidebar
+     */
+    openSearch(): void {
+        if (this.viewModel.sidebarContentType !== 'layerUpgrade') {
+            this.viewModel.sidebarOpened = (this.viewModel.sidebarContentType !== 'search') ? true : !this.viewModel.sidebarOpened;
+            this.viewModel.sidebarContentType = 'search';
+        }
     }
 }
