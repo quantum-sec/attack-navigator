@@ -51,7 +51,7 @@ export class TabsComponent implements AfterContentInit, AfterViewInit {
 
     public prebuiltLayers = [{
       href: 'siem/azure-sentinel-baseline.json',
-      icon: 'https://play-lh.googleusercontent.com/TckA-A_COVAujJtzvpgGhwVkkYCBEDbZe-GLaA9kVbZra1Vcoy7oPXCUG3y0GP2AZg',
+      icon: '/assets/azure-logo.png',
       name: 'Azure Sentinel (Baseline)',
       description: 'Layer showing coverage of out-of-the-box Azure Sentinel detection rule library.',
     }, {
