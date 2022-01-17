@@ -46,7 +46,7 @@ body {
 
   .tagline {
     position: absolute;
-    right: 24px;
+    right: 1.5rem;
     top: 16px;
 
     a, a > strong {
@@ -68,13 +68,30 @@ body {
   }
 }
 
-.version {
+.version-footer {
   display: block;
-  font-size: 12px;
+  font-size: 12px !important;
   font-family: $font-family-monospace;
-  color: #555;
+  color: #555 !important;
   padding-left: 16px;
   margin-top: 18px;
+}
+
+.tabs-container {
+  margin-left: 11rem;
+}
+
+.tabs .tab-title:hover:not(.active), .theme-use-system .tabs .tab-title:focus:not(.active) {
+  color: #fff !important;
+  border-color: #000 !important;
+
+  svg {
+    fill: #ccc !important;
+  }
+}
+
+.tabs svg {
+  fill: #ccc !important;
 }
 
 .tabs > li {
@@ -92,6 +109,7 @@ body {
   &:hover {
     background-color: #222 !important;
     border-color: #222 !important;
+    color: #f0f !important;
   }
 
   &.active {
@@ -112,6 +130,14 @@ body {
 
       .control-row-item {
         .control-row-button {
+          &:not(.disabled) {
+            color: #777 !important;
+          }
+
+          &.disabled {
+            color: #444 !important;
+          }
+
           &:hover {
             background-color: #333 !important;
           }
@@ -134,9 +160,7 @@ body {
   }
 
   .section-label {
-    background-color: transparent !important;
-    border: 0 !important;
-    color: #777 !important;
+    display: none;
   }
 }
 
@@ -222,11 +246,13 @@ td.tactic, .technique-row > td:nth-child(odd) {
   background: #222;
   border: solid 1px #111 !important;
   box-shadow: 0 0 24px rgba(0, 0, 0, 0.2);
-  color: #ccc;
+  color: #ccc !important;
+  height: auto !important;
 }
 
 .tactic.count {
   color: #999 !important;
+  border-bottom-color: #000 !important;
 }
 
 .technique-cell {
@@ -349,6 +375,7 @@ td.tactic, .technique-row > td:nth-child(odd) {
 .newTab {
   border: none !important;
   background-color: #1c1c1c !important;
+  overflow-y: auto !important;
 }
 
 .mat-expansion-panel {
@@ -372,6 +399,10 @@ td.tactic, .technique-row > td:nth-child(odd) {
   color: #777;
   font-size: 14px;
   margin-top: 40px !important;
+
+  p {
+    text-align: center;
+  }
 
   a, a:hover {
     color: #00da55 !important;

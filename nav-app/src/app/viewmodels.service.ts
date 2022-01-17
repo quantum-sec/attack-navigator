@@ -1,5 +1,5 @@
-import { Injectable } from '@angular/core';
-import { DataService, Technique, Tactic, Matrix, Domain } from "./data.service";
+import { EventEmitter, Injectable, Output } from '@angular/core';
+import { DataService, Technique, Tactic, Matrix, Domain, VersionChangelog } from "./data.service";
 declare var tinygradient: any; //use tinygradient
 // import * as tinygradient from 'tinygradient'
 declare var tinycolor: any; //use tinycolor2
@@ -8,21 +8,31 @@ declare var tinycolor: any; //use tinycolor2
 declare var math: any; //use mathjs
 import * as globals from './globals'; //global variables
 import * as is from 'is_js';
+import { getCookie, hasCookie } from "./cookies";
 
 @Injectable()
 export class ViewModelsService {
+    @Output() onSelectionChange = new EventEmitter<any>();
 
     constructor(private dataService: DataService) { }
 
     viewModels: ViewModel[] = [];
 
     /**
+     * Emit event when technique selection changes
+     */
+    selectionChanged() {
+        this.onSelectionChange.emit();
+    }
+
+    /**
      * Create and return a new viewModel
      * @param {string} name the viewmodel name
+     * @param {string} domainVersionID the ID of the domain & version
      * @return {ViewModel} the created ViewModel
      */
-    newViewModel(name: string, domainID: string) {
-        let vm = new ViewModel(name, "vm"+ this.getNonce(), domainID, this.dataService);
+    newViewModel(name: string, domainVersionID: string) {
+        let vm = new ViewModel(name, "vm"+ this.getNonce(), domainVersionID, this.dataService);
         this.viewModels.push(vm);
         return vm;
     }
@@ -54,17 +64,20 @@ export class ViewModelsService {
 
     /**
      * layer combination operation
-     * @param  scoreExpression math expression of score expression
-     * @param  scoreVariables  variables in math expression, mapping to viewmodel they correspond to
-     * @param  comments           what viewmodel to inherit comments from
-     * @param  coloring           what viewmodel to inherit manual colors from
-     * @param  enabledness        what viewmodel to inherit state from
-     * @param  layerName          new layer name
-     * @param  filters            viewmodel to inherit filters from
-     * @return                    new viewmodel inheriting above properties
+     * @param  domainVersionID  domain & version ID
+     * @param  scoreExpression  math expression of score expression
+     * @param  scoreVariables   variables in math expression, mapping to viewmodel they correspond to
+     * @param  comments         what viewmodel to inherit comments from
+     * @param  links            what viewmodel to inherit links from
+     * @param  metadata         what viewmodel to inherit technique metadata from
+     * @param  coloring         what viewmodel to inherit manual colors from
+     * @param  enabledness      what viewmodel to inherit state from
+     * @param  layerName        new layer name
+     * @param  filters          viewmodel to inherit filters from
+     * @return                  new viewmodel inheriting above properties
      */
-    layerLayerOperation(domainID: string, scoreExpression: string, scoreVariables: Map<string, ViewModel>, comments: ViewModel, gradient: ViewModel, coloring: ViewModel, enabledness: ViewModel, layerName: string, filters: ViewModel, legendItems: ViewModel): ViewModel {
-        let result = new ViewModel("layer by operation", "vm" + this.getNonce(), domainID, this.dataService);
+    layerLayerOperation(domainVersionID: string, scoreExpression: string, scoreVariables: Map<string, ViewModel>, comments: ViewModel, links: ViewModel, metadata: ViewModel, gradient: ViewModel, coloring: ViewModel, enabledness: ViewModel, layerName: string, filters: ViewModel, legendItems: ViewModel): ViewModel {
+        let result = new ViewModel("layer by operation", "vm" + this.getNonce(), domainVersionID, this.dataService);
 
         if (scoreExpression) {
             scoreExpression = scoreExpression.toLowerCase() //should be enforced by input, but just in case
@@ -141,8 +154,8 @@ export class ViewModelsService {
                 // set up gradient according to result range
                 if (score_min != Infinity) result.gradient.minValue = score_min;
                 if (score_max != -Infinity) result.gradient.maxValue = score_max;
-                // if it's a binary range, set to whiteblue gradient
-                if (score_min == 0 && score_max == 1) result.gradient.setGradientPreset("whiteblue");
+                // if it's a binary range, set to transparentblue gradient
+                if (score_min == 0 && score_max == 1) result.gradient.setGradientPreset("transparentblue");
             }
         }
 
@@ -162,9 +175,11 @@ export class ViewModelsService {
             })
         }
 
-        if (comments)    inherit(comments, "comment")
-        if (coloring)    inherit(coloring, "color")
-        if (enabledness) inherit(enabledness, "enabled")
+        if (comments) inherit(comments, "comment");
+        if (links) inherit(links, "links");
+        if (metadata) inherit(metadata, "metadata");
+        if (coloring) inherit(coloring, "color");
+        if (enabledness) inherit(enabledness, "enabled");
 
         if (filters) { //copy filter settings
             result.filters.deSerialize(JSON.parse(filters.filters.serialize()))
@@ -211,7 +226,7 @@ export class Gradient {
         let colorList: string[] = [];
         let self = this;
         this.colors.forEach(function(gColor: Gcolor) {
-            let hexstring = (tinycolor(gColor.color).toHexString())
+            let hexstring = (tinycolor(gColor.color).toHex8String()); // include the alpha channel
             colorList.push(hexstring)
         });
 
@@ -258,8 +273,8 @@ export class Gradient {
         greenred: [new Gcolor("#8ec843"), new Gcolor("#ffe766"), new Gcolor("#ff6666")],
         bluered: [new Gcolor("#66b1ff"), new Gcolor("#ff66f4"), new Gcolor("#ff6666")],
         redblue: [new Gcolor("#ff6666"), new Gcolor("#ff66f4"), new Gcolor("#66b1ff")],
-        whiteblue: [new Gcolor("#ffffff"), new Gcolor("#66b1ff")],
-        whitered: [new Gcolor("#ffffff"), new Gcolor("#ff6666")]
+        transparentblue: [new Gcolor("#ffffff00"), new Gcolor("#66b1ff")],
+        transparentred: [new Gcolor("#ffffff00"), new Gcolor("#ff6666")]
     }
 
     /**
@@ -343,13 +358,14 @@ export class ViewModel {
     name: string; // layer name
     domain: string = ""; // attack domain
     version: string = ""; // attack version
-    domainID: string; // layer domain & version
+    domainVersionID: string; // layer domain & version
     description: string = ""; //layer description
     uid: string; //unique identifier for this ViewModel. Do not serialize, let it get initialized by the VmService
 
     filters: Filter;
 
     metadata: Metadata[] = [];
+    links: Link[] = [];
 
     /*
      * sorting int meanings (see filterTechniques()):
@@ -382,8 +398,23 @@ export class ViewModel {
     techIDtoUIDMap: Object = {};
     techUIDtoIDMap: Object = {};
 
-    constructor(name: string, uid: string, domainID: string, private dataService: DataService) {
-        this.domainID = domainID;
+    compareTo?: ViewModel;
+    versionChangelog?: VersionChangelog;
+
+    private _sidebarOpened: boolean;
+    public get sidebarOpened(): boolean { return this._sidebarOpened; };
+    public set sidebarOpened(newVal: boolean) { this._sidebarOpened = newVal; };
+
+    public readonly sidebarContentTypes = ['layerUpgrade', 'search'];
+    private _sidebarContentType: string;
+    public get sidebarContentType(): string { return this._sidebarContentType; };
+    public set sidebarContentType(newVal: string) {
+        if (this.sidebarContentTypes.includes(newVal)) this._sidebarContentType = newVal;
+        else this._sidebarContentType = '';
+    };
+
+    constructor(name: string, uid: string, domainVersionID: string, private dataService: DataService) {
+        this.domainVersionID = domainVersionID;
         console.log("initializing ViewModel '" + name + "'");
         this.filters = new Filter();
         this.name = name;
@@ -391,22 +422,22 @@ export class ViewModel {
     }
 
     loadVMData() {
-        if (!this.domainID || !this.dataService.getDomain(this.domainID).dataLoaded) {
+        if (!this.domainVersionID || !this.dataService.getDomain(this.domainVersionID).dataLoaded) {
             console.log("subscribing to data loaded callback")
             let self = this;
-            this.dataService.onDataLoad(this.domainID, function() {
+            this.dataService.onDataLoad(this.domainVersionID, function() {
                 self.initTechniqueVMs()
-                self.filters.initPlatformOptions(self.dataService.getDomain(self.domainID));
+                self.filters.initPlatformOptions(self.dataService.getDomain(self.domainVersionID));
             });
         } else {
             this.initTechniqueVMs();
-            this.filters.initPlatformOptions(this.dataService.getDomain(this.domainID));
+            this.filters.initPlatformOptions(this.dataService.getDomain(this.domainVersionID));
         }
     }
 
     initTechniqueVMs() {
         console.log(this.name, "initializing technique VMs");
-        for (let technique of this.dataService.getDomain(this.domainID).techniques) {
+        for (let technique of this.dataService.getDomain(this.domainVersionID).techniques) {
             for (let id of technique.get_all_technique_tactic_ids()) {
                 let techniqueVM = new TechniqueVM(id);
                 techniqueVM.score = this.initializeScoresTo;
@@ -485,15 +516,18 @@ export class ViewModel {
 
 
     public highlightedTactic: Tactic = null;
-    public highlightedTechnique: Technique = null;
+    public highlightedTechniques: Set<string> = new Set<string>();
+    public highlightedTechnique: Technique = null; // the Technique that was actually moused over
 
     /**
      * Highlight the given technique under the given tactic
      * @param {Technique} technique to highlight
      * @param {Tactic} tactic wherein the technique occurs
      */
-    public highlightTechnique(technique: Technique, tactic: Tactic) {
+    public highlightTechnique(technique: Technique, tactic?: Tactic | null) {
+        if (this.selectSubtechniquesWithParent && technique.isSubtechnique) this.highlightedTechniques.add(technique.parent.id);
         this.highlightedTechnique = technique;
+        this.highlightedTechniques.add(technique.id);
         this.highlightedTactic = tactic;
     }
     /**
@@ -502,6 +536,7 @@ export class ViewModel {
     public clearHighlight() {
         this.highlightedTactic = null;
         this.highlightedTechnique = null;
+        this.highlightedTechniques = new Set<string>();
     }
 
     /**
@@ -546,7 +581,10 @@ export class ViewModel {
                 }
             }
         }
-        this.selectedTechniques.add(technique.get_technique_tactic_id(tactic));
+        let technique_tactic_id = technique.get_technique_tactic_id(tactic);
+        if (!this.isCurrentlyEditing()) this.activeTvm = this.getTechniqueVM_id(technique_tactic_id); // first selection
+        this.selectedTechniques.add(technique_tactic_id);
+        this.checkValues(true, technique_tactic_id);
     }
 
     /**
@@ -563,20 +601,28 @@ export class ViewModel {
      * select the given technique across all tactics in which it occurs
      * @param {Technique} technique to select
      * @param {boolean} walkChildren (recursion helper) if true and selectSubtechniquesWithParent is true, walk selection up to parent technique
+     * @param highlightTechniques, if true, highlight techniques rather than add to selected techniques group
      */
-    public selectTechniqueAcrossTactics(technique: Technique, walkChildren=true): void {
+    public selectTechniqueAcrossTactics(technique: Technique, walkChildren= true, highlightTechniques = false): void {
         if (this.selectSubtechniquesWithParent && walkChildren) { //walk to parent / children / siblings
             if (technique.isSubtechnique) { //select from parent
-                this.selectTechniqueAcrossTactics(technique.parent, true);
+                this.selectTechniqueAcrossTactics(technique.parent, true, highlightTechniques);
                 return;
             } else { //select subtechniques
                 for (let subtechnique of technique.subtechniques) {
-                    this.selectTechniqueAcrossTactics(subtechnique, false);
+                    this.selectTechniqueAcrossTactics(subtechnique, false, highlightTechniques);
                 }
             }
         }
-        for (let id of technique.get_all_technique_tactic_ids()) {
-            this.selectedTechniques.add(id);
+        if (highlightTechniques) {
+            this.highlightTechnique(technique);
+        }
+        else {
+            for (let id of technique.get_all_technique_tactic_ids()) {
+                if (!this.isCurrentlyEditing()) this.activeTvm = this.getTechniqueVM_id(id); // first selection
+                this.selectedTechniques.add(id);
+                this.checkValues(true, id);
+            }
         }
     }
 
@@ -597,7 +643,9 @@ export class ViewModel {
                 }
             }
         }
-        this.selectedTechniques.delete(technique.get_technique_tactic_id(tactic));
+        let technique_tactic_id = technique.get_technique_tactic_id(tactic);
+        this.selectedTechniques.delete(technique_tactic_id);
+        this.checkValues(false, technique_tactic_id);
     }
 
     /**
@@ -628,6 +676,7 @@ export class ViewModel {
         }
         for (let id of technique.get_all_technique_tactic_ids()) {
             this.selectedTechniques.delete(id);
+            this.checkValues(false, id);
         }
     }
 
@@ -636,6 +685,9 @@ export class ViewModel {
      */
     public clearSelectedTechniques() {
         this.selectedTechniques.clear();
+        this.activeTvm = undefined;
+        this.linkMismatches = [];
+        this.metadataMismatches = [];
     }
 
     /**
@@ -654,7 +706,11 @@ export class ViewModel {
         this.clearSelectedTechniques();
         let self = this;
         this.techniqueVMs.forEach(function(tvm, key) {
-            if (!previouslySelected.has(tvm.technique_tactic_union_id)) self.selectedTechniques.add(tvm.technique_tactic_union_id)
+            if (!previouslySelected.has(tvm.technique_tactic_union_id)) {
+                if (!self.isCurrentlyEditing()) self.activeTvm = self.getTechniqueVM_id(tvm.technique_tactic_union_id); // first selection
+                self.selectedTechniques.add(tvm.technique_tactic_union_id);
+                self.checkValues(true, tvm.technique_tactic_union_id);
+            }
         });
     }
 
@@ -668,12 +724,19 @@ export class ViewModel {
             // deselect techniques without annotations
             let selected = new Set(this.selectedTechniques);
             this.techniqueVMs.forEach(function(tvm, key) {
-                if (selected.has(tvm.technique_tactic_union_id) && !tvm.annotated()) self.selectedTechniques.delete(tvm.technique_tactic_union_id);
-            })
+                if (selected.has(tvm.technique_tactic_union_id) && !tvm.annotated()) {
+                    self.selectedTechniques.delete(tvm.technique_tactic_union_id);
+                    self.checkValues(false, tvm.technique_tactic_union_id);
+                }
+            });
         } else {
             // select all techniques with annotations
             this.techniqueVMs.forEach(function(tvm, key) {
-                if (tvm.annotated()) self.selectedTechniques.add(tvm.technique_tactic_union_id);
+                if (tvm.annotated()) {
+                    if (!self.isCurrentlyEditing()) self.activeTvm = self.getTechniqueVM_id(tvm.technique_tactic_union_id); // first selection
+                    self.selectedTechniques.add(tvm.technique_tactic_union_id);
+                    self.checkValues(true, tvm.technique_tactic_union_id);
+                }
             });
         }
     }
@@ -688,12 +751,85 @@ export class ViewModel {
             // deselect techniques with annotations
             let selected = new Set(this.selectedTechniques);
             this.techniqueVMs.forEach(function(tvm, key) {
-                if (selected.has(tvm.technique_tactic_union_id) && tvm.annotated()) self.selectedTechniques.delete(tvm.technique_tactic_union_id);
-            })
+                if (selected.has(tvm.technique_tactic_union_id) && tvm.annotated()) {
+                    self.selectedTechniques.delete(tvm.technique_tactic_union_id);
+                    self.checkValues(false, tvm.technique_tactic_union_id);
+                }
+            });
         } else {
             // select all techniques without annotations
             this.selectAnnotated();
             this.invertSelection();
+        }
+    }
+
+    /**
+     * Copies all annotations from unchanged techniques and techniques
+     * which have had minor changes
+     */
+    public initCopyAnnotations(): void {
+        let self = this;
+
+        function copy(attackID: string) {
+            let fromTechnique = self.dataService.getTechnique(attackID, self.compareTo.domainVersionID);
+            let domain = self.dataService.getDomain(self.domainVersionID);
+            let tactics = fromTechnique.tactics.map(shortname => domain.tactics.find(t => t.shortname == shortname));
+            tactics.forEach(tactic => {
+                let fromVM = self.compareTo.getTechniqueVM(fromTechnique, tactic);
+                if (fromVM.annotated()) {
+                    let toTechnique = self.dataService.getTechnique(attackID, self.domainVersionID);
+                    self.copyAnnotations(fromTechnique, toTechnique, tactic);
+                }
+            });
+        }
+
+        if (this.versionChangelog) {
+            this.versionChangelog.unchanged.forEach(attackID => copy(attackID));
+            this.versionChangelog.minor_changes.forEach(attackID => copy(attackID));
+        }
+    }
+
+    /**
+     * Copy annotations from one technique to another under the given tactic.
+     * The previous technique will be disabled
+     * @param fromTechnique the technique to copy annotations from
+     * @param toTechnique the technique to copy annotations to
+     * @param tactic the tactic the techniques are found under
+     */
+    public copyAnnotations(fromTechnique: Technique, toTechnique: Technique, tactic: Tactic): void {
+        let fromVM = this.compareTo.getTechniqueVM(fromTechnique, tactic);
+        let toVM = this.getTechniqueVM(toTechnique, tactic);
+
+        this.versionChangelog.reviewed.delete(fromTechnique.attackID);
+
+        toVM.deSerialize(fromVM.serialize(), fromTechnique.attackID, tactic.shortname);
+        this.updateScoreColor(toVM);
+        fromVM.enabled = false;
+
+        this.versionChangelog.copied.add(fromVM.technique_tactic_union_id);
+        if (fromTechnique.get_all_technique_tactic_ids().every(id => this.versionChangelog.copied.has(id))) {
+            this.versionChangelog.reviewed.add(fromTechnique.attackID);
+        }
+    }
+
+    /**
+     * Reset the techniqueVM that the annotations were previously copied to
+     * and re-enable the technique the annotations were copied from
+     * @param fromTechnique the technique that annotations were copied from
+     * @param toTechnique the technique that annotations were copied to
+     * @param tactic the tactic the techniques are found under
+     */
+    public revertCopy(fromTechnique: Technique, toTechnique: Technique, tactic: Tactic): void {
+        let fromVM = this.compareTo.getTechniqueVM(fromTechnique, tactic);
+        let toVM = this.getTechniqueVM(toTechnique, tactic);
+        this.versionChangelog.reviewed.delete(fromTechnique.attackID);
+
+        toVM.resetAnnotations();
+        fromVM.enabled = true;
+
+        this.versionChangelog.copied.delete(fromVM.technique_tactic_union_id);
+        if (!fromTechnique.get_all_technique_tactic_ids().every(id => this.versionChangelog.copied.has(id))) {
+            this.versionChangelog.reviewed.delete(fromTechnique.attackID);
         }
     }
 
@@ -818,7 +954,24 @@ export class ViewModel {
     public editSelectedTechniques(field: string, value: any): void {
         this.selectedTechniques.forEach((id) => {
             this.getTechniqueVM_id(id)[field] = value;
-        })
+        });
+    }
+
+    /**
+     * Edit the selected techniques list attribute
+     * @param {string}  field the field to edit
+     * @param {(Link|Metadata)[]} values the list of values to place in the field
+     */
+    public editSelectedTechniqueValues(field: string, values: (Link | Metadata)[]): void {
+        let fieldToType: any = {"links": Link, "metadata": Metadata};
+        this.selectedTechniques.forEach(id => {
+            const value_clone = values.map(value => { // deep copy
+                let clone = new fieldToType[field]();
+                clone.deSerialize(value.serialize());
+                return clone;
+            });
+            this.getTechniqueVM_id(id)[field] = value_clone;
+        });
     }
 
     /**
@@ -826,12 +979,7 @@ export class ViewModel {
      */
     public resetSelectedTechniques(): void {
         this.selectedTechniques.forEach((id) => {
-            this.getTechniqueVM_id(id).score = "";
-            this.getTechniqueVM_id(id).comment = "";
-            this.getTechniqueVM_id(id).color = "";
-            this.getTechniqueVM_id(id).enabled = true;
-            this.getTechniqueVM_id(id).aggregateScore = "";
-            this.getTechniqueVM_id(id).aggregateScoreColor = "";
+            this.getTechniqueVM_id(id).resetAnnotations();
         })
     }
 
@@ -851,22 +999,44 @@ export class ViewModel {
         return commonValue;
     }
 
-    /**
-     * add a new blank metadata to the metadata list, for editing in UI
-     */
-    public addMetadata() {
-        let m = new Metadata()
-        this.metadata.push(m);
-    }
+    activeTvm: TechniqueVM; // first selected techniqueVM
+    linkMismatches: string[] = []; // subsequent selected technique_tactic_ids that do not have matching links
+    public get linksMatch(): boolean { return !this.linkMismatches.length; }
+    metadataMismatches: string[] = []; // subsequent selected technique_tactic_ids that do not have matching metadata
+    public get metadataMatch(): boolean { return !this.metadataMismatches.length; }
 
     /**
-     * remove a metadata from the metadata list
-     * @param index the index to remove from the list
+     * If a technique has been selected, checks whether the link & metadata values of the selected technique match 
+     * the link & metadata values of the first selected technique. If a technique has been deselected, removes it from
+     * the lists of mismatching techniques (if applicable) or re-evalutes the lists of mismatching
+     * techniques in the case where the deselected technique was the first selected technique
+     * @param selected true if the technique was selected, false if it was deselected
+     * @param id the technique_tactic_union_id of the technique
      */
-    public removeMetadata(index: number) {
-        this.metadata.splice(index, 1)
-    }
+    public checkValues(selected: boolean, id: string): void {
+        if (selected) { // selected technique(s)
+            let tvm = this.getTechniqueVM_id(id);
+            if (this.activeTvm.linkStr !== tvm.linkStr) this.linkMismatches.push(id);
+            if (this.activeTvm.metadataStr !== tvm.metadataStr) this.metadataMismatches.push(id);
+        } else { // deselected technique(s)
+            if (this.linkMismatches.includes(id)) this.linkMismatches.splice(this.linkMismatches.indexOf(id), 1);
+            if (this.metadataMismatches.includes(id)) this.metadataMismatches.splice(this.metadataMismatches.indexOf(id), 1);
 
+            if (this.activeTvm && this.activeTvm.technique_tactic_union_id == id) { // edge case where deselection was the first selected technique
+                let first_id = this.selectedTechniques.values().next().value;
+                this.activeTvm = first_id ? this.getTechniqueVM_id(first_id): undefined;
+
+                // re-evaluate mismatched values
+                this.linkMismatches = [];
+                this.metadataMismatches = [];
+                for (let technique_tactic_id of this.selectedTechniques) {
+                    let tvm = this.getTechniqueVM_id(technique_tactic_id);
+                    if (this.activeTvm.linkStr !== tvm.linkStr) this.linkMismatches.push(technique_tactic_id);
+                    if (this.activeTvm.metadataStr !== tvm.metadataStr) this.metadataMismatches.push(technique_tactic_id);
+                }
+            }
+        }
+    }
 
     //  oooooooo8                          o8          o88 ooooooooooo o88   o888   o8
     // 888           ooooooo  oo oooooo  o888oo       o88   888    88  oooo   888 o888oo ooooooooo8 oo oooooo
@@ -902,7 +1072,7 @@ export class ViewModel {
         return techniques.filter((technique: Technique) => {
             let techniqueVM = this.getTechniqueVM(technique, tactic);
             // filter by enabled
-            if (this.hideDisabled && !techniqueVM.enabled) return false;
+            if (this.hideDisabled && !this.isSubtechniqueEnabled(technique, techniqueVM, tactic)) return false;
             if (matrix.name == "PRE-ATT&CK") return true; // don't filter by platform if it's pre-attack
             // filter by platform
             let platforms = new Set(technique.platforms)
@@ -911,6 +1081,14 @@ export class ViewModel {
             }
             return false; //no platform match
         })
+    }
+
+    public isSubtechniqueEnabled(technique, techniqueVM, tactic): boolean {
+        if (techniqueVM.enabled) return true;
+        else if (technique.subtechniques.length > 0) {
+            return technique.subtechniques.some(subtechnique => this.getTechniqueVM(subtechnique, tactic).enabled);
+        }
+        else return false;
     }
 
     /**
@@ -923,37 +1101,35 @@ export class ViewModel {
         return techniques.sort((technique1: Technique, technique2: Technique) => {
             const techniqueVM1 = this.getTechniqueVM(technique1, tactic);
             const techniqueVM2 = this.getTechniqueVM(technique2, tactic);
-            let score1 = techniqueVM1.score.length > 0 ? Number(techniqueVM1.score) : 0;
-            let score2 = techniqueVM2.score.length > 0 ? Number(techniqueVM2.score) : 0;
+            let score1, score2;
 
             this.sortSubTechniques(technique1, tactic);
             this.sortSubTechniques(technique2, tactic);
 
-            // if show aggregate scores is enabled, factor that into sorting
-            if (this.layout.showAggregateScores) {
-                techniqueVM1.aggregateScore = this.calculateAggregateScore(technique1, tactic);
-                techniqueVM2.aggregateScore = this.calculateAggregateScore(technique2, tactic);
-                const totalScore = techniqueVM1.aggregateScore - techniqueVM2.aggregateScore;
-                if (totalScore < 0) {
-                    score2 -= totalScore;
-                } else if (totalScore > 0) {
-                    score1 += totalScore;
-                }
+            if (!this.layout.showAggregateScores) {
+                score1 = techniqueVM1.score.length > 0 ? Number(techniqueVM1.score) : 0;
+                score2 = techniqueVM2.score.length > 0 ? Number(techniqueVM2.score) : 0;
+            }
+            else { // if show aggregate scores is enabled, factor that into sorting, and prefer techniques scored 0 over unscored
+                score1 = this.calculateAggregateScore(technique1, tactic);
+                techniqueVM1.aggregateScore = Number.isFinite(score1) ? score1.toString() : "";
+                score2 = this.calculateAggregateScore(technique2, tactic);
+                techniqueVM2.aggregateScore = Number.isFinite(score2) ? score2.toString() : "";
             }
 
             switch (this.sorting) {
                 default:
-                case 0:
+                case 0: // A-Z
                     return technique1.name.localeCompare(technique2.name);
-                case 1:
+                case 1: // Z-A
                     return technique2.name.localeCompare(technique1.name);
-                case 2:
+                case 2: // ascending
                     if (score1 === score2) {
                         return technique1.name.localeCompare(technique2.name);
                     } else {
                         return score1 - score2;
                     }
-                case 3:
+                case 3: // descending
                     if (score1 === score2) {
                         return technique1.name.localeCompare(technique2.name);
                     } else {
@@ -982,30 +1158,30 @@ export class ViewModel {
 
     public calculateAggregateScore(technique: Technique, tactic: Tactic): any {
         const tvm = this.getTechniqueVM(technique, tactic);
-        let score = 0, validSubTechniquesCount = 0;
-        let scores = [];
-        if (tvm.score.length > 0 && !isNaN(Number(tvm.score))) {
-            score = Number(tvm.score);
-            scores.push(score);
-            validSubTechniquesCount += 1;
-        }
+        let score = tvm.score.length > 0 ? Number(tvm.score) : 0;
+        let validTechniquesCount = tvm.score.length > 0 ? 1 : 0;
+        let scores = [score];
+
         technique.subtechniques.forEach((subtechnique) => {
-            const techniqueVM = this.getTechniqueVM(subtechnique, tactic);
-            const scoreNum = Number(techniqueVM.score);
-            if (techniqueVM.score.length > 0 && !isNaN(scoreNum)) {
-                validSubTechniquesCount += 1;
-                score += scoreNum;
+            const svm = this.getTechniqueVM(subtechnique, tactic);
+            const scoreNum = svm.score.length > 0 ? Number(svm.score) : 0;
+            if (svm.score.length > 0) {
+                validTechniquesCount += 1;
                 scores.push(scoreNum);
             }
         });
-        if (validSubTechniquesCount === 0) return;
-        let aggScore = 0;
+
+        if (validTechniquesCount === 0) return tvm.score.length > 0 ? score : Number.NEGATIVE_INFINITY;
+
+        let aggScore: any = 0;
+
         switch (this.layout.aggregateFunction) {
             default:
             case "average":
                 // Divide by count of all subtechniques + 1 (for parent technique) if counting unscored is enabled
                 // Otherwise, divide by count of all scored only
-                aggScore = +(score / ((this.layout.countUnscored) ? technique.subtechniques.length + 1 : validSubTechniquesCount)).toFixed(2);
+                score = scores.reduce((a, b) => a + b);
+                aggScore = score / (this.layout.countUnscored ? (technique.subtechniques.length + 1) : validTechniquesCount);
                 break;
             case "min":
                 if (scores.length > 0) aggScore = Math.min(...scores);
@@ -1014,11 +1190,13 @@ export class ViewModel {
                 if (scores.length > 0) aggScore = Math.max(...scores);
                 break;
             case "sum":
-                aggScore = score;
+                aggScore = scores.reduce((a, b) => a + b);
                 break;
         }
+
+        aggScore = aggScore.toFixed(2);
         tvm.aggregateScoreColor = this.gradient.getColor(aggScore.toString());
-        return aggScore;
+        return +aggScore;
     }
 
     /**
@@ -1056,12 +1234,12 @@ export class ViewModel {
         rep.name = this.name;
 
         rep.versions = {
-            "attack": this.dataService.getDomain(this.domainID).getVersion(),
+            "attack": this.dataService.getDomain(this.domainVersionID).getVersion(),
             "navigator": globals.nav_version,
             "layer": globals.layer_version
         }
 
-        rep.domain = this.domainID.substr(0, this.domainID.search(/-v[0-9]/g));
+        rep.domain = this.domainVersionID.substr(0, this.domainVersionID.search(/-v[0-9]+/g));
         rep.description = this.description;
         rep.filters = JSON.parse(this.filters.serialize());
         rep.sorting = this.sorting;
@@ -1070,7 +1248,8 @@ export class ViewModel {
         rep.techniques = modifiedTechniqueVMs;
         rep.gradient = JSON.parse(this.gradient.serialize());
         rep.legendItems = JSON.parse(JSON.stringify(this.legendItems));
-        rep.metadata = this.metadata.filter((m)=>m.valid()).map((m) => m.serialize());
+        rep.metadata = this.metadata.filter(m => m.valid()).map(m => m.serialize());
+        rep.links = this.links.filter(l => l.valid()).map(l => l.serialize());
 
         rep.showTacticRowBackground = this.showTacticRowBackground;
         rep.tacticRowBackground = this.tacticRowBackground;
@@ -1084,14 +1263,14 @@ export class ViewModel {
      * restore the domain and version from a string
      * @param rep string to restore from
      */
-    deSerializeDomainID(rep: any): void {
+    deSerializeDomainVersionID(rep: any): void {
         let obj = (typeof(rep) == "string")? JSON.parse(rep) : rep
         this.name = obj.name
         this.version = this.dataService.getCurrentVersion(); // layer with no specified version defaults to current version
         if ("versions" in obj) {
             if ("attack" in obj.versions) {
                 if (typeof(obj.versions.attack) === "string") {
-                    if (obj.versions.attack.length > 0) this.version = "v" + obj.versions.attack.match(/[0-9]/g)[0];
+                    if (obj.versions.attack.length > 0) this.version = "v" + obj.versions.attack.match(/[0-9]+/g)[0];
                 }
                 else console.error("TypeError: attack version field is not a string");
             }
@@ -1110,7 +1289,7 @@ export class ViewModel {
         if(obj.domain in this.dataService.domain_backwards_compatibility) {
             this.domain = this.dataService.domain_backwards_compatibility[obj.domain];
         } else { this.domain = obj.domain; }
-        this.domainID = this.dataService.getDomainID(this.domain, this.version);
+        this.domainVersionID = this.dataService.getDomainVersionID(this.domain, this.version);
     }
 
     /**
@@ -1200,9 +1379,12 @@ export class ViewModel {
                     } else {
                         // occurs in multiple tactics
                         // match to Technique by attackID
-                        for (let technique of this.dataService.getDomain(this.domainID).techniques) {
+                        for (let technique of this.dataService.getDomain(this.domainVersionID).techniques) {
                             if (technique.attackID == obj_technique.techniqueID) {
                                 // match technique
+                                // don't load deprecated/revoked, causes crash since tactics don't get loaded on revoked techniques
+                                if (technique.deprecated || technique.revoked) break;
+
                                 for (let tactic of technique.tactics) {
                                     let tvm = new TechniqueVM("");
                                     tvm.deSerialize(JSON.stringify(obj_technique),
@@ -1215,6 +1397,9 @@ export class ViewModel {
                             //check against subtechniques
                             for (let subtechnique of technique.subtechniques) {
                                 if (subtechnique.attackID == obj_technique.techniqueID) {
+                                    // don't load deprecated/revoked, causes crash since tactics don't get loaded on revoked techniques
+                                    if (subtechnique.deprecated || subtechnique.revoked) break;
+
                                     for (let tactic of subtechnique.tactics) {
                                         let tvm = new TechniqueVM("");
                                         tvm.deSerialize(JSON.stringify(obj_technique),
@@ -1236,6 +1421,13 @@ export class ViewModel {
                 let m = new Metadata();
                 m.deSerialize(metadataObj);
                 if (m.valid()) this.metadata.push(m)
+            }
+        }
+        if ("links" in obj) {
+            for (let link of obj.links) {
+                let l = new Link();
+                l.deSerialize(link);
+                if (l.valid()) this.links.push(l);
             }
         }
         if ("layout" in obj) {
@@ -1298,6 +1490,15 @@ export class ViewModel {
             tvm.scoreColor = self.gradient.getColor(tvm.score);
         });
         this.updateLegendColorPresets();
+    }
+
+    /**
+     * Update the score color of a single technique VM to match the current
+     * score and gradient
+     * @param tvm technique VM to update
+     */
+    updateScoreColor(tvm: TechniqueVM): void {
+        tvm.scoreColor = this.gradient.getColor(tvm.score);
     }
 
     legendItems = [
@@ -1383,6 +1584,9 @@ export class TechniqueVM {
     enabled: boolean = true;
     comment: string = ""
     metadata: Metadata[] = [];
+    public get metadataStr(): string { return JSON.stringify(this.metadata); }
+    links: Link[] = [];
+    public get linkStr(): string { return JSON.stringify(this.links); }
 
     showSubtechniques = false;
     aggregateScore: any; // number rather than string as this is not based on an input from user
@@ -1399,7 +1603,7 @@ export class TechniqueVM {
      * @return true if it has been modified, false otherwise
      */
     modified(): boolean {
-        return (this.score != "" || this.color != "" || !this.enabled || this.comment != "" || this.showSubtechniques);
+        return (this.annotated() || this.showSubtechniques);
     }
 
     /**
@@ -1407,7 +1611,21 @@ export class TechniqueVM {
      * @return true if it has annotations, false otherwise
      */
     annotated(): boolean {
-        return (this.score != "" || this.color != "" || !this.enabled || this.comment != "");
+        return (this.score != "" || this.color != "" || !this.enabled || this.comment != "" || this.links.length !== 0 || this.metadata.length !== 0);
+    }
+
+    /**
+     * Reset this TechniqueVM's annotations to their default values
+     */
+    resetAnnotations(): void {
+        this.score = "";
+        this.comment = "";
+        this.color = "";
+        this.enabled = true;
+        this.aggregateScore = "";
+        this.aggregateScoreColor = "";
+        this.links = [];
+        this.metadata = [];
     }
 
     /**
@@ -1422,10 +1640,9 @@ export class TechniqueVM {
         rep.color = this.color;
         rep.comment = this.comment;
         rep.enabled = this.enabled;
-        rep.metadata = this.metadata.filter((m)=>m.valid()).map((m) => m.serialize());
+        rep.metadata = this.metadata.filter(m => m.valid()).map(m => m.serialize());
+        rep.links = this.links.filter(l => l.valid()).map(l => l.serialize());
         rep.showSubtechniques = this.showSubtechniques;
-        //rep.technique_tactic_union_id = this.technique_tactic_union_id;
-        //console.log(rep);
         return JSON.stringify(rep, null, "\t")
     }
 
@@ -1437,8 +1654,7 @@ export class TechniqueVM {
         let obj = JSON.parse(rep);
         if (techniqueID !== undefined) this.techniqueID = techniqueID;
         else console.error("ERROR: TechniqueID field not present in technique")
-        // if ("technique_tactic_union_id" in obj) this.technique_tactic_union_id = obj.technique_tactic_union_id;
-        // else console.error("ERROR: technique_tactic_union_id field not present in technique")
+
         if ("tactic" !== undefined) this.tactic = tactic;
         else console.error("ERROR: tactic field not present in technique")
         if ("comment" in obj) {
@@ -1474,7 +1690,13 @@ export class TechniqueVM {
                 if (m.valid()) this.metadata.push(m)
             }
         }
-
+        if ("links" in obj) {
+            for (let linkObj of obj.links) {
+                let link = new Link();
+                link.deSerialize(linkObj);
+                if (link.valid()) this.links.push(link);
+            }
+        }
     }
 
     constructor(technique_tactic_union_id: string) {
@@ -1590,26 +1812,71 @@ export class Metadata {
     public name: string;
     public value: string;
     public divider: boolean;
-    constructor() {};
-    serialize(): object { return this.name && this.value ? {name: this.name, value: this.value} : {divider: this.divider} }
-    deSerialize(rep: any) {
-        if (rep.name) { // name & value object
-            if (typeof(rep.name) === "string") this.name = rep.name;
+
+    constructor() { }
+
+    serialize(): object {
+        return this.name && this.value ? {name: this.name, value: this.value} : {divider: this.divider};
+    }
+
+    deSerialize(rep: any): void {
+        let obj = (typeof(rep) == "string")? JSON.parse(rep) : rep;
+        if ("name" in obj) { // name & value object
+            if (typeof(obj.name) === "string") this.name = obj.name;
             else console.error("TypeError: Metadata field 'name' is not a string");
 
-            if (rep.value) {
-                if (typeof(rep.value) === "string") this.value = rep.value;
+            if ("value" in obj) {
+                if (typeof(obj.value) === "string") this.value = obj.value;
                 else console.error("TypeError: Metadata field 'value' is not a string")
             }
             else console.error("Error: Metadata required field 'value' not present");
         }
-        else if ("divider" in rep) { // divider object
-            if (typeof(rep.divider) === "boolean") this.divider = rep.divider;
+        else if ("divider" in obj) { // divider object
+            if (typeof(obj.divider) === "boolean") this.divider = obj.divider;
             else  console.error("TypeError: Metadata field 'divider' is not a boolean");
         }
         else console.error("Error: Metadata required field 'name' or 'divider' not present");
     }
-    valid(): boolean { return (this.name && this.name.length > 0 && this.value && this.value.length > 0) || (this.divider !== undefined) }
+
+    valid(): boolean {
+        return (this.name && this.name.length > 0 && this.value && this.value.length > 0) || (this.divider !== undefined)
+    }
+}
+
+// { label, url } with serialization
+export class Link {
+    public label: string;
+    public url: string;
+    public divider: boolean;
+
+    constructor() { }
+
+    serialize(): object { 
+        return this.label && this.url ? {label: this.label, url: this.url} : {divider: this.divider};
+    }
+
+    deSerialize(rep: any): void {
+        let obj = (typeof(rep) == "string")? JSON.parse(rep) : rep;
+        if ("url" in obj) { // label & url object
+            if (typeof(obj.url) === "string") this.url = obj.url;
+            else console.error("TypeError: Link field 'url' is not a string");
+
+            if ("label" in obj) {
+                if (typeof(obj.label) === "string") this.label = obj.label;
+                else console.error("TypeError: Link field 'label' is not a string");
+            }
+            else console.error("Error: Link required field 'label' not present");
+        }
+        else if ("divider" in obj) { // divider object
+            if (typeof(obj.divider) === "boolean") this.divider = obj.divider;
+            else  console.error("TypeError: Link field 'divider' is not a boolean");
+        }
+        else console.error("Error: Link required field 'url' or 'divider' not present");
+    }
+
+    valid(): boolean {
+        return (this.label && this.label.length > 0 && this.url && this.url.length > 0) || (this.divider !== undefined)
+    }
 }
 
 export class LayoutOptions {
@@ -1681,28 +1948,28 @@ export class LayoutOptions {
     }
 
     public deserialize(rep: any) {
-        if (rep.showID) {
+        if ("showID" in rep) {
             if (typeof (rep.showID) === "boolean") this.showID = rep.showID;
             else console.error("TypeError: layout field 'showID' is not a boolean:", rep.showID, "(", typeof (rep.showID), ")");
         }
-      if (rep.showName) {
+      if ("showName" in rep) {
           if (typeof (rep.showName) === "boolean") this.showName = rep.showName;
           else console.error("TypeError: layout field 'showName' is not a boolean:", rep.showName, "(", typeof (rep.showName), ")");
       }
       //make sure this one goes last so that it can override name and ID if layout == 'mini'
-      if (rep.layout) {
+      if ("layout" in rep) {
           if (typeof (rep.layout) === "string") this.layout = rep.layout;
           else console.error("TypeError: layout field 'layout' is not a string:", rep.layout, "(", typeof (rep.layout), ")");
       }
-      if (rep.aggregateFunction) {
+      if ("aggregateFunction" in rep) {
           if (typeof (rep.aggregateFunction) === "string") this.aggregateFunction = rep.aggregateFunction;
           else console.error("TypeError: layout field 'aggregateFunction' is not a boolean:", rep.aggregateFunction, "(", typeof (rep.aggregateFunction), ")");
       }
-      if (rep.showAggregateScores) {
+      if ("showAggregateScores" in rep) {
           if (typeof (rep.showAggregateScores) === "boolean") this.showAggregateScores = rep.showAggregateScores;
           else console.error("TypeError: layout field 'showAggregateScores' is not a boolean:", rep.showAggregateScores, "(", typeof (rep.showAggregateScores), ")");
       }
-      if (rep.countUnscored) {
+      if ("countUnscored" in rep) {
           if (typeof (rep.countUnscored) === "boolean") this.countUnscored = rep.countUnscored;
           else console.error("TypeError: layout field 'countUnscored' is not a boolean:", rep.countUnscored, "(", typeof (rep.countUnscored), ")");
       }
