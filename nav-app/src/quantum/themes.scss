@@ -1,0 +1,194 @@
+@import '~@angular/material/theming';
+@include mat-core();
+
+$theme-color-variables: (
+  color-quantum-logo: (
+    dark: $quantum-logo-dark,
+    light: $quantum-logo-light,
+  ),
+  color-body-background: (
+    dark: $grey-925,
+    light: $grey-75,
+  ),
+  color-body-text: (
+    dark: $grey-25,
+    light: $grey-950,
+  ),
+  color-toolbar-background: (
+    dark: $grey-900,
+    light: $grey-50,
+  ),
+  color-toolbar-title-text: (
+    dark: $grey-100,
+    light: $grey-700,
+  ),
+  color-toolbar-sub-text: (
+    dark: $grey-400,
+    light: $grey-600,
+  ),
+  color-nav-background: (
+    dark: $grey-875,
+    light: $grey-50,
+  ),
+  color-nav-item-background: (
+    dark: $grey-850,
+    light: $grey-100,
+  ),
+  color-nav-item-text: (
+    dark: $grey-600,
+    light: $grey-600,
+  ),
+  color-nav-item-highlight-background: (
+    dark: $grey-900,
+    light: $grey-50,
+  ),
+  color-nav-item-highlight-text: (
+    dark: $grey-100,
+    light: $grey-800,
+  ),
+  color-nav-nested-background: (
+    dark: $grey-885,
+    light: $grey-75,
+  ),
+  color-nav-separator: (
+    dark: $grey-900,
+    light: $grey-75,
+  ),
+  color-nav-item-caret: (
+    dark: $grey-700,
+    light: $grey-500,
+  ),
+  color-nav-item-title-text: (
+    dark: $grey-400,
+    light: $grey-700,
+  ),
+  color-nav-button-background: (
+    dark: $grey-975,
+    light: $white,
+  ),
+  color-nav-button-highlight-background: (
+    dark: $grey-700,
+    light: $grey-300,
+  ),
+  color-menu-background: (
+    dark: $grey-875,
+    light: $white,
+  ),
+  color-menu-highlight-background: (
+    dark: $grey-950,
+    light: $grey-100,
+  ),
+  color-menu-separator: (
+    dark: $grey-800,
+    light: $grey-100,
+  ),
+  color-menu-icon-border: (
+    dark: $grey-700,
+    light: $grey-200,
+  ),
+  color-menu-text: (
+    dark: $grey-400,
+    light: $grey-700,
+  ),
+  color-menu-highlight-text: (
+    dark: $grey-100,
+    light: $grey-800,
+  ),
+  color-menu-hover-background: (
+    dark: $grey-800,
+    light: $grey-50,
+  ),
+  color-form-field-label-text: (
+    dark: $grey-300,
+    light: $grey-600,
+  ),
+  color-tab-background: (
+    dark: $grey-925,
+    light: $grey-75,
+  ),
+  color-tab-text: (
+    dark: $white,
+    light: $grey-975,
+  ),
+  color-tab-highlight: (
+    dark: $grey-800,
+    light: $grey-50,
+  ),
+  color-html-background: (
+    dark: $grey-950,
+    light: $grey-100,
+  ),
+  color-nav-hover-background: (
+    dark: $grey-700,
+    light: $grey-300,
+  ),
+  color-nav-hover-icon: (
+    dark: $grey-875,
+    light: $grey-50,
+  ),
+  color-dropdown-button-background: (
+    dark: $grey-750,
+    light: $grey-300,
+  ),
+);
+
+$quantum-brand-palette: (
+  500: $brand-color-primary,
+  contrast: (
+    500: $black,
+  )
+);
+
+$light-primary-palette: mat-palette($quantum-brand-palette, 500);
+$light-accent-palette: mat-palette($mat-grey, 500);
+$light-material-theme: mat-light-theme(
+  (
+    color: (
+      primary: $light-primary-palette,
+      accent: $light-accent-palette,
+    )
+  )
+);
+
+@include angular-material-theme($light-material-theme);
+
+$dark-primary-palette: mat-palette($quantum-brand-palette, 500);
+$dark-accent-palette: mat-palette($mat-grey, 500);
+$dark-material-theme: mat-dark-theme(
+  (
+    color: (
+      primary: $dark-primary-palette,
+      accent: $dark-accent-palette,
+    )
+  )
+);
+
+// Light theme (default)
+.theme-override-light {
+  @each $variable, $colors in $theme-color-variables {
+    --#{$variable}: #{map-get($colors, 'light')};
+  }
+}
+
+// Dark theme
+.theme-override-dark {
+  @include angular-material-theme($dark-material-theme);
+
+  @each $variable, $colors in $theme-color-variables {
+    --#{$variable}: #{map-get($colors, 'dark')};
+  }
+}
+
+// Use system setting
+.theme-use-system {
+  @media (prefers-color-scheme: dark) {
+    @each $variable, $colors in $theme-color-variables {
+      --#{$variable}: #{map-get($colors, 'dark')};
+    }
+  }
+  @media (prefers-color-scheme: light) {
+    @each $variable, $colors in $theme-color-variables {
+      --#{$variable}: #{map-get($colors, 'light')};
+    }
+  }
+}

@@ -1,8 +1,9 @@
 /* You can add global styles to this file, and also import other style files */
-@import "~@angular/material/prebuilt-themes/indigo-pink.css";
+@import "~@angular/material/prebuilt-themes/pink-bluegrey.css";
 @import "~@fontsource/roboto/index.css";
 @import "~@fontsource/roboto-mono/index.css";
 @import "colors.scss";
+@import "quantum/quantum.scss";
 
 @font-face {
   font-family: 'Material Icons';
@@ -366,5 +367,3 @@ body {
   //don't force 20rem width, conform to content of popover
   width: unset !important;
 }
-
-@import 'quantum.scss';

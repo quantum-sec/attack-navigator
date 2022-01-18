@@ -17,13 +17,14 @@ export class AppComponent implements OnInit {
   quantumCustomizationVersion: string = globals.QUANTUM_CUSTOMIZATION_VERSION;
   public user_theme: string;
 
-  @HostListener('window:beforeunload', ['$event'])
-  promptNavAway($event) {
-    if (!this.configService.getFeature('leave_site_dialog')) return;
-    //this text only shows in the data, not visible to user as far as I can tell
-    //however, if it's not included the window doesn't open.
-    $event.returnValue = 'Are you sure you want to navigate away? Your data may be lost!';
-  }
+  // NOTE: Disable the popup asking if we want to leave the page or not
+  // @HostListener('window:beforeunload', ['$event'])
+  // promptNavAway($event) {
+  //   if (!this.configService.getFeature('leave_site_dialog')) return;
+  //   //this text only shows in the data, not visible to user as far as I can tell
+  //   //however, if it's not included the window doesn't open.
+  //   $event.returnValue = 'Are you sure you want to navigate away? Your data may be lost!';
+  // }
 
   constructor(public configService: ConfigService, private iconsService: IconsService) {
     Array.prototype.includes = function (value): boolean {

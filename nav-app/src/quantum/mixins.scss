@@ -1,0 +1,11 @@
+@mixin dark-theme-only() {
+  .theme-override-dark {
+    @content;
+  }
+}
+
+@mixin light-theme-only {
+  .theme-override-light {
+    @content;
+  }
+}

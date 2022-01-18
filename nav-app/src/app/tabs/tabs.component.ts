@@ -52,8 +52,8 @@ export class TabsComponent implements AfterContentInit, AfterViewInit {
     public prebuiltLayers = [{
       href: 'siem/azure-sentinel-baseline.json',
       icon: 'https://play-lh.googleusercontent.com/TckA-A_COVAujJtzvpgGhwVkkYCBEDbZe-GLaA9kVbZra1Vcoy7oPXCUG3y0GP2AZg',
-      name: 'Azure Sentinel (Baseline)',
-      description: 'Layer showing coverage of out-of-the-box Azure Sentinel detection rule library.',
+      name: 'Microsoft Sentinel (Baseline)',
+      description: 'Layer showing coverage of out-of-the-box Microsoft Sentinel detection rule library.',
     }, {
       href: 'siem/quantum-detection-rule-library.json',
       icon: 'https://www.quantum.security/assets/img/home/xdr-heading-alternate.svg',
@@ -75,7 +75,6 @@ export class TabsComponent implements AfterContentInit, AfterViewInit {
       name: 'Quantum Container Scanning',
       description: 'Layer showing coverage of the Quantum Security container scanning checks.',
     }];
-
 
     @ViewChild('safariWarning') safariWarning : TemplateRef<any>;
 
@@ -563,7 +562,7 @@ export class TabsComponent implements AfterContentInit, AfterViewInit {
      */
     layerUpgrade(oldViewModel: ViewModel, serialized: any, replace: boolean, defaultLayers: boolean = false): Promise<any> {
         return new Promise((resolve, reject) => {
-            if (!defaultLayers) { 
+            if (!defaultLayers) {
             this.versionUpgradeDialog(oldViewModel).then( (versions) => {
                     if (versions) { // user upgraded to latest version
                         // create and open the latest version
@@ -577,7 +576,7 @@ export class TabsComponent implements AfterContentInit, AfterViewInit {
                         newViewModel.sidebarOpened = true;
                         newViewModel.sidebarContentType = 'layerUpgrade'
                         newViewModel.selectTechniquesAcrossTactics = false;
-        
+
                         // load layer version & latest ATT&CK version
                         let loads: any = {};
                         if (!this.dataService.getDomain(versions.oldID).dataLoaded) loads.old = this.dataService.loadDomainData(versions.oldID, true);
@@ -685,7 +684,7 @@ export class TabsComponent implements AfterContentInit, AfterViewInit {
      * @param loadURL the url to load
      * @param replace replace the current active with the loaded layer?
      * @param defaultLayers is this loading reflecting a set of default layers (from the config file or from the query string)?
-     * 
+     *
      */
     async loadLayerFromURL(loadURL, replace, defaultLayers = false): Promise<any> {
         return new Promise(async(resolve, reject) => {

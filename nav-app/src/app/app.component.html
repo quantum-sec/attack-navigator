@@ -1,9 +1,19 @@
 <div [ngClass]="user_theme">
-    <div class="app-container">
-        <div class="nav-app">
-            <tabs (onUserThemeChange)="themeChangeHandler($event)" [userTheme]="user_theme"></tabs>
-            <button class="version-footer" (click)="tabsComponent.openDialog('changelog')">MITRE ATT&CK&reg; Navigator
-                v{{nav_version}} | Quantum Security Build {{quantumCustomizationVersion}}</button>
-        </div>
+  <div id="background"></div>
+  <nav class="main-nav">
+    <a class="logo" href="https://www.quantum.security/" target="_blank">Quantum</a>
+    <span class="tagline">
+      <a href="https://github.com/quantum-sec/attack-navigator" target="_blank">
+        <strong>MITRE ATT&CK&reg; Navigator</strong>
+      </a>
+    </span>
+  </nav>
+  <div style="height:65px; width:98%;"></div>
+  <div class="app-container">
+    <div class="nav-app">
+      <tabs (onUserThemeChange)="themeChangeHandler($event)" [userTheme]="user_theme"></tabs>
+      <button class="version-footer" (click)="tabsComponent.openDialog('changelog')">MITRE ATT&CK&reg; Navigator
+        v{{nav_version}} | Quantum Security Build {{quantumCustomizationVersion}}</button>
     </div>
+  </div>
 </div>
